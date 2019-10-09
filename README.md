@@ -1,4 +1,4 @@
-Reicast-Core
+Flycast-Core
 ===========
 
-OpenEmu Core plugin with Reicast to support Dreamcast emulation
+OpenEmu Core plugin with Flycast to support Dreamcast emulation
