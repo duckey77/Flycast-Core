@@ -31,7 +31,7 @@
 @class OERingBuffer;
 
 OE_EXPORTED_CLASS
-@interface ReicastGameCore : OEGameCore
+@interface FlycastGameCore : OEGameCore
 @end
 
-extern __weak ReicastGameCore *_current;
+extern __weak FlycastGameCore *_current;

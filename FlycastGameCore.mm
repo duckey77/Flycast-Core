@@ -51,7 +51,7 @@
 
 typedef std::function<void(bool status, const std::string &message, void *cbUserData)> Callback;
 
-@interface ReicastGameCore () <OEDCSystemResponderClient>
+@interface FlycastGameCore () <OEDCSystemResponderClient>
 {
     uint16_t *_soundBuffer;
     int videoWidth, videoHeight;
@@ -61,9 +61,9 @@ typedef std::function<void(bool status, const std::string &message, void *cbUser
 }
 @end
 
-__weak ReicastGameCore *_current;
+__weak FlycastGameCore *_current;
 
-@implementation ReicastGameCore
+@implementation FlycastGameCore
 
 - (id)init
 {
