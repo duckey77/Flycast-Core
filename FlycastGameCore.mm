@@ -1,26 +1,26 @@
 /*
  Copyright (c) 2013, OpenEmu Team
-
+ 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
-     * Redistributions of source code must retain the above copyright
-       notice, this list of conditions and the following disclaimer.
-     * Redistributions in binary form must reproduce the above copyright
-       notice, this list of conditions and the following disclaimer in the
-       documentation and/or other materials provided with the distribution.
-     * Neither the name of the OpenEmu Team nor the
-       names of its contributors may be used to endorse or promote products
-       derived from this software without specific prior written permission.
-
+ * Redistributions of source code must retain the above copyright
+ notice, this list of conditions and the following disclaimer.
+ * Redistributions in binary form must reproduce the above copyright
+ notice, this list of conditions and the following disclaimer in the
+ documentation and/or other materials provided with the distribution.
+ * Neither the name of the OpenEmu Team nor the
+ names of its contributors may be used to endorse or promote products
+ derived from this software without specific prior written permission.
+ 
  THIS SOFTWARE IS PROVIDED BY OpenEmu Team ''AS IS'' AND ANY
  EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
  DISCLAIMED. IN NO EVENT SHALL OpenEmu Team BE LIABLE FOR ANY
  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
@@ -47,7 +47,7 @@
 #define SAMPLERATE 44100
 #define SIZESOUNDBUFFER 44100 / 60 * 4
 #define DC_PLATFORM DC_PLATFORM_DREAMCAST
-#define DC_Contollers 1
+#define DC_Contollers 4
 
 typedef std::function<void(bool status, const std::string &message, void *cbUserData)> Callback;
 
@@ -68,7 +68,7 @@ __weak FlycastGameCore *_current;
 - (id)init
 {
     self = [super init];
-
+    
     if(self)
     {
         videoHeight = 480;
@@ -177,9 +177,20 @@ volatile bool has_init = false;
     screen_height = videoHeight;
 }
 
+- (void)setPauseEmulation:(BOOL)paused
+{
+        if(!has_init || !system_init)
+            return;
+    
+       if (paused) {
+           dc_stop();
+       } else {
+           dc_resume();
+       }
+}
+
 - (void)stopEmulation
 {
-
     NSLog(@"Stopping Emulation Core");
     //We need this sleep for now until I find a better way of making sure the save is completed
     usleep (10000);
@@ -210,21 +221,21 @@ volatile bool has_init = false;
         
         dc_start_game([romPath UTF8String]);
     }
-
+    
     //System is initialized - render the frames
     if (!has_init)
-       return;
-
+        return;
+    
     if (rend_framePending())
     {
         system_init = true;
         screen_height = videoHeight;
         screen_width = videoWidth;
-
+        
         [self.renderDelegate presentDoubleBufferedFBO];
-
+        
         rend_single_frame();
-
+        
         calcFPS();
     }
 }
@@ -259,7 +270,7 @@ double emuFrameInterval = 59.94;
 void calcFPS(){
     const int spg_clks[4] = { 26944080, 13458568, 13462800, 26944080 };
     u32 pixel_clock = spg_clks[(SPG_CONTROL.full >> 6) & 3];
-
+    
     switch (pixel_clock)
     {
         case 26944080:
@@ -333,7 +344,7 @@ void calcFPS(){
         while (!system_init)
             usleep (10000);
         
-       dc_SetStateName(autoLoadStatefileName.fileSystemRepresentation);
+        dc_SetStateName(autoLoadStatefileName.fileSystemRepresentation);
         dc_loadstate();
         
         [self endPausedExecution];
@@ -344,9 +355,9 @@ void calcFPS(){
 - (void)saveStateToFileAtPath:(NSString *)fileName completionHandler:(void (^)(BOOL, NSError *))block
 {
     if (has_init) {
-       [self beginPausedExecution];
+        [self beginPausedExecution];
         
-       dc_SetStateName(fileName.fileSystemRepresentation);
+        dc_SetStateName(fileName.fileSystemRepresentation);
         dc_savestate();
         
         [self endPausedExecution];
@@ -358,19 +369,19 @@ void calcFPS(){
 {
     if (!has_init) {
         //Start a separate thread to load
-       autoLoadStatefileName = fileName;
+        autoLoadStatefileName = fileName;
         
         [NSThread detachNewThreadSelector:@selector(autoloadWaitThread) toTarget:self withObject:nil];
-       
+        
     } else {
         [self beginPausedExecution];
- 
+        
         dc_SetStateName(fileName.fileSystemRepresentation);
         dc_loadstate();
         [self endPausedExecution];
     }
-   
-     block(true, nil);
+    
+    block(true, nil);
 }
 
 # pragma mark - Input
@@ -384,13 +395,13 @@ void os_SetupInput()
     settings.input.maple_expansion_devices[0][0] = MDT_SegaVMU;
     settings.input.maple_expansion_devices[0][1] = MDT_SegaVMU;
     
-        // Add additional controllers
-        for (int i = 1; i < DC_Contollers; i++)
-        {
-                settings.input.maple_devices[i] = MDT_SegaController;
-                settings.input.maple_expansion_devices[i][0] = MDT_None;
-                settings.input.maple_expansion_devices[i][1] = MDT_None;
-        }
+    // Add additional controllers
+    for (int i = 1; i < DC_Contollers; i++)
+    {
+        settings.input.maple_devices[i] = MDT_SegaController;
+        settings.input.maple_expansion_devices[i][0] = MDT_None;
+        settings.input.maple_expansion_devices[i][1] = MDT_None;
+    }
     mcfg_CreateDevices();
 #endif
 }

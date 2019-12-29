@@ -75,27 +75,27 @@ cThread emu_thread(&dc_run, NULL);
 int64_t get_time_usec(void)
 {
 #ifdef _WIN32
-    static LARGE_INTEGER freq;
-    LARGE_INTEGER count;
-    
-    /* Frequency is guaranteed to not change. */
-    if (!freq.QuadPart && !QueryPerformanceFrequency(&freq))
-        return 0;
-    
-    if (!QueryPerformanceCounter(&count))
-        return 0;
-    return count.QuadPart * 1000000 / freq.QuadPart;
+   static LARGE_INTEGER freq;
+   LARGE_INTEGER count;
+
+   /* Frequency is guaranteed to not change. */
+   if (!freq.QuadPart && !QueryPerformanceFrequency(&freq))
+      return 0;
+
+   if (!QueryPerformanceCounter(&count))
+      return 0;
+   return count.QuadPart * 1000000 / freq.QuadPart;
 #elif defined(_POSIX_MONOTONIC_CLOCK) || defined(__QNX__) || defined(__ANDROID__) || defined(__MACH__) || HOST_OS==OS_LINUX
-    struct timespec tv = {0};
-    if (clock_gettime(CLOCK_MONOTONIC, &tv) < 0)
-        return 0;
-    return tv.tv_sec * INT64_C(1000000) + (tv.tv_nsec + 500) / 1000;
+   struct timespec tv = {0};
+   if (clock_gettime(CLOCK_MONOTONIC, &tv) < 0)
+      return 0;
+   return tv.tv_sec * INT64_C(1000000) + (tv.tv_nsec + 500) / 1000;
 #elif defined(EMSCRIPTEN)
-    return emscripten_get_now() * 1000;
+   return emscripten_get_now() * 1000;
 #elif defined(__mips__) || defined(DJGPP)
-    struct timeval tv;
-    gettimeofday(&tv,NULL);
-    return (1000000 * tv.tv_sec + tv.tv_usec);
+   struct timeval tv;
+   gettimeofday(&tv,NULL);
+   return (1000000 * tv.tv_sec + tv.tv_usec);
 #else
 #error "Your platform does not have a timer function implemented in cpu_features_get_time_usec(). Cannot continue."
 #endif
@@ -105,28 +105,28 @@ int64_t get_time_usec(void)
 int GetFile(char *szFileName, char *szParse /* = 0 */, u32 flags /* = 0 */)
 {
     cfgLoadStr("config", "image", szFileName, "");
-    
+
     return szFileName[0] != '\0' ? 1 : 0;
 }
 
 
 s32 plugins_Init()
 {
-    
+
     if (s32 rv = libPvr_Init())
         return rv;
-    
+
 #ifndef TARGET_DISPFRAME
     if (s32 rv = libGDR_Init())
         return rv;
 #endif
-    
+
     if (s32 rv = libAICA_Init())
         return rv;
-    
+
     if (s32 rv = libARM_Init())
         return rv;
-    
+
     return 0;
 }
 
@@ -154,7 +154,7 @@ void LoadSpecialSettings()
     {
         char prod_id[sizeof(ip_meta.product_number) + 1] = {0};
         memcpy(prod_id, ip_meta.product_number, sizeof(ip_meta.product_number));
-        
+
         NOTICE_LOG(BOOT, "Game ID is [%s]", prod_id);
         rtt_to_buffer_game = false;
         safemode_game = false;
@@ -163,9 +163,9 @@ void LoadSpecialSettings()
         disable_vmem32_game = false;
         forced_game_region = -1;
         forced_game_cable = -1;
-        
+
         if (ip_meta.isWindowsCE() || settings.dreamcast.ForceWindowsCE
-            || !strncmp("T26702N", prod_id, 7)) // PBA Tour Bowling 2001
+                || !strncmp("T26702N", prod_id, 7)) // PBA Tour Bowling 2001
         {
             INFO_LOG(BOOT, "Enabling Full MMU and Extra depth scaling for Windows CE game");
             settings.rend.ExtraDepthScale = 0.1; // taxi 2 needs 0.01 for FMV (amd, per-tri)
@@ -173,31 +173,31 @@ void LoadSpecialSettings()
             settings.dreamcast.FullMMU = true;
             settings.aica.NoBatch = true;
         }
-        
+
         // Tony Hawk's Pro Skater 2
         if (!strncmp("T13008D", prod_id, 7) || !strncmp("T13006N", prod_id, 7)
-            // Tony Hawk's Pro Skater 1
-            || !strncmp("T40205N", prod_id, 7)
-            // Tony Hawk's Skateboarding
-            || !strncmp("T40204D", prod_id, 7)
-            // Skies of Arcadia
-            || !strncmp("MK-51052", prod_id, 8)
-            // Eternal Arcadia (JP)
-            || !strncmp("HDR-0076", prod_id, 8)
-            // Flag to Flag (US)
-            || !strncmp("MK-51007", prod_id, 8)
-            // Super Speed Racing (JP)
-            || !strncmp("HDR-0013", prod_id, 8)
-            // Yu Suzuki Game Works Vol. 1
-            || !strncmp("6108099", prod_id, 7)
-            // L.O.L
-            || !strncmp("T2106M", prod_id, 6)
-            // Miss Moonlight
-            || !strncmp("T18702M", prod_id, 7)
-            // Tom Clancy's Rainbow Six (US)
-            || !strncmp("T40401N", prod_id, 7)
-            // Tom Clancy's Rainbow Six incl. Eagle Watch Missions (EU)
-            || !strncmp("T-45001D05", prod_id, 10))
+                // Tony Hawk's Pro Skater 1
+                || !strncmp("T40205N", prod_id, 7)
+                // Tony Hawk's Skateboarding
+                || !strncmp("T40204D", prod_id, 7)
+                // Skies of Arcadia
+                || !strncmp("MK-51052", prod_id, 8)
+                // Eternal Arcadia (JP)
+                || !strncmp("HDR-0076", prod_id, 8)
+                // Flag to Flag (US)
+                || !strncmp("MK-51007", prod_id, 8)
+                // Super Speed Racing (JP)
+                || !strncmp("HDR-0013", prod_id, 8)
+                // Yu Suzuki Game Works Vol. 1
+                || !strncmp("6108099", prod_id, 7)
+                // L.O.L
+                || !strncmp("T2106M", prod_id, 6)
+                // Miss Moonlight
+                || !strncmp("T18702M", prod_id, 7)
+                // Tom Clancy's Rainbow Six (US)
+                || !strncmp("T40401N", prod_id, 7)
+                // Tom Clancy's Rainbow Six incl. Eagle Watch Missions (EU)
+                || !strncmp("T-45001D05", prod_id, 10))
         {
             INFO_LOG(BOOT, "Enabling render to texture buffer for game %s", prod_id);
             settings.rend.RenderToTextureBuffer = 1;
@@ -212,10 +212,10 @@ void LoadSpecialSettings()
         }
         // Demolition Racer
         if (!strncmp("T15112N", prod_id, 7)
-            // Ducati World - Racing Challenge (NTSC)
-            || !strncmp("T-8113N", prod_id, 7)
-            // Ducati World (PAL)
-            || !strncmp("T-8121D-50", prod_id, 10))
+                // Ducati World - Racing Challenge (NTSC)
+                || !strncmp("T-8113N", prod_id, 7)
+                // Ducati World (PAL)
+                || !strncmp("T-8121D-50", prod_id, 10))
         {
             INFO_LOG(BOOT, "Enabling Dynarec safe mode for game %s", prod_id);
             settings.dynarec.safemode = 1;
@@ -273,39 +273,39 @@ void LoadSpecialSettings()
         {
             switch (settings.dreamcast.region)
             {
-                case 0: // Japan
-                    if (!region_japan)
-                    {
-                        NOTICE_LOG(BOOT, "Japan region not supported. Using %s instead", region_usa ? "USA" : "Europe");
-                        settings.dreamcast.region = region_usa ? 1 : 2;
-                        forced_game_region = settings.dreamcast.region;
-                    }
-                    break;
-                case 1: // USA
-                    if (!region_usa)
-                    {
-                        NOTICE_LOG(BOOT, "USA region not supported. Using %s instead", region_eu ? "Europe" : "Japan");
-                        settings.dreamcast.region = region_eu ? 2 : 0;
-                        forced_game_region = settings.dreamcast.region;
-                    }
-                    break;
-                case 2: // Europe
-                    if (!region_eu)
-                    {
-                        NOTICE_LOG(BOOT, "Europe region not supported. Using %s instead", region_usa ? "USA" : "Japan");
-                        settings.dreamcast.region = region_usa ? 1 : 0;
-                        forced_game_region = settings.dreamcast.region;
-                    }
-                    break;
-                case 3: // Default
-                    if (region_usa)
-                        settings.dreamcast.region = 1;
-                    else if (region_eu)
-                        settings.dreamcast.region = 2;
-                    else
-                        settings.dreamcast.region = 0;
+            case 0: // Japan
+                if (!region_japan)
+                {
+                    NOTICE_LOG(BOOT, "Japan region not supported. Using %s instead", region_usa ? "USA" : "Europe");
+                    settings.dreamcast.region = region_usa ? 1 : 2;
                     forced_game_region = settings.dreamcast.region;
-                    break;
+                }
+                break;
+            case 1: // USA
+                if (!region_usa)
+                {
+                    NOTICE_LOG(BOOT, "USA region not supported. Using %s instead", region_eu ? "Europe" : "Japan");
+                    settings.dreamcast.region = region_eu ? 2 : 0;
+                    forced_game_region = settings.dreamcast.region;
+                }
+                break;
+            case 2: // Europe
+                if (!region_eu)
+                {
+                    NOTICE_LOG(BOOT, "Europe region not supported. Using %s instead", region_usa ? "USA" : "Japan");
+                    settings.dreamcast.region = region_usa ? 1 : 0;
+                    forced_game_region = settings.dreamcast.region;
+                }
+                break;
+            case 3: // Default
+                if (region_usa)
+                    settings.dreamcast.region = 1;
+                else if (region_eu)
+                    settings.dreamcast.region = 2;
+                else
+                    settings.dreamcast.region = 0;
+                forced_game_region = settings.dreamcast.region;
+                break;
             }
         }
         else
@@ -320,7 +320,7 @@ void LoadSpecialSettings()
     else if (settings.platform.system == DC_PLATFORM_NAOMI || settings.platform.system == DC_PLATFORM_ATOMISWAVE)
     {
         NOTICE_LOG(BOOT, "Game ID is [%s]", naomi_game_id);
-        
+
         if (!strcmp("METAL SLUG 6", naomi_game_id) || !strcmp("WAVE RUNNER GP", naomi_game_id))
         {
             INFO_LOG(BOOT, "Enabling Dynarec safe mode for game %s", naomi_game_id);
@@ -334,23 +334,23 @@ void LoadSpecialSettings()
             extra_depth_game = true;
         }
         if (!strcmp("DYNAMIC GOLF", naomi_game_id)
-            || !strcmp("SHOOTOUT POOL", naomi_game_id)
-            || !strcmp("OUTTRIGGER     JAPAN", naomi_game_id)
-            || !strcmp("CRACKIN'DJ  ver JAPAN", naomi_game_id)
-            || !strcmp("CRACKIN'DJ PART2  ver JAPAN", naomi_game_id)
-            || !strcmp("KICK '4' CASH", naomi_game_id))
+                || !strcmp("SHOOTOUT POOL", naomi_game_id)
+                || !strcmp("OUTTRIGGER     JAPAN", naomi_game_id)
+                || !strcmp("CRACKIN'DJ  ver JAPAN", naomi_game_id)
+                || !strcmp("CRACKIN'DJ PART2  ver JAPAN", naomi_game_id)
+                || !strcmp("KICK '4' CASH", naomi_game_id))
         {
             INFO_LOG(BOOT, "Enabling JVS rotary encoders for game %s", naomi_game_id);
             settings.input.JammaSetup = 2;
         }
         else if (!strcmp("POWER STONE 2 JAPAN", naomi_game_id)        // Naomi
-                 || !strcmp("GUILTY GEAR isuka", naomi_game_id))        // AW
+                || !strcmp("GUILTY GEAR isuka", naomi_game_id))        // AW
         {
             INFO_LOG(BOOT, "Enabling 4-player setup for game %s", naomi_game_id);
             settings.input.JammaSetup = 1;
         }
         else if (!strcmp("SEGA MARINE FISHING JAPAN", naomi_game_id)
-                 || !strcmp(naomi_game_id, "BASS FISHING SIMULATOR VER.A"))    // AW
+                    || !strcmp(naomi_game_id, "BASS FISHING SIMULATOR VER.A"))    // AW
         {
             INFO_LOG(BOOT, "Enabling specific JVS setup for game %s", naomi_game_id);
             settings.input.JammaSetup = 3;
@@ -361,8 +361,8 @@ void LoadSpecialSettings()
             settings.input.JammaSetup = 4;
         }
         else if (!strcmp("NINJA ASSAULT", naomi_game_id)
-                 || !strcmp(naomi_game_id, "Sports Shooting USA")    // AW
-                 || !strcmp(naomi_game_id, "SEGA CLAY CHALLENGE"))    // AW
+                    || !strcmp(naomi_game_id, "Sports Shooting USA")    // AW
+                    || !strcmp(naomi_game_id, "SEGA CLAY CHALLENGE"))    // AW
         {
             INFO_LOG(BOOT, "Enabling lightgun setup for game %s", naomi_game_id);
             settings.input.JammaSetup = 5;
@@ -385,7 +385,7 @@ void dc_reset(bool hard)
 {
     plugins_Reset(hard);
     mem_Reset(hard);
-    
+
     sh4_cpu.Reset(hard);
 }
 
@@ -419,14 +419,14 @@ int reicast_init(int argc, char* argv[])
         LogManager::Init();
         LoadSettings(false);
     }
-    
+
     os_CreateWindow();
     os_SetupInput();
-    
+
     // Needed to avoid crash calling dc_is_running() in gui
     Get_Sh4Interpreter(&sh4_cpu);
     sh4_cpu.Init();
-    
+
     return 0;
 }
 
@@ -436,33 +436,33 @@ void set_platform(int platform)
         _vmem_unprotect_vram(0, VRAM_SIZE);
     switch (platform)
     {
-        case DC_PLATFORM_DREAMCAST:
-            settings.platform.ram_size = 16 * 1024 * 1024;
-            settings.platform.vram_size = 8 * 1024 * 1024;
-            settings.platform.aram_size = 2 * 1024 * 1024;
-            settings.platform.bios_size = 2 * 1024 * 1024;
-            settings.platform.flash_size = 128 * 1024;
-            settings.platform.bbsram_size = 0;
-            break;
-        case DC_PLATFORM_NAOMI:
-            settings.platform.ram_size = 32 * 1024 * 1024;
-            settings.platform.vram_size = 16 * 1024 * 1024;
-            settings.platform.aram_size = 8 * 1024 * 1024;
-            settings.platform.bios_size = 2 * 1024 * 1024;
-            settings.platform.flash_size = 0;
-            settings.platform.bbsram_size = 32 * 1024;
-            break;
-        case DC_PLATFORM_ATOMISWAVE:
-            settings.platform.ram_size = 16 * 1024 * 1024;
-            settings.platform.vram_size = 8 * 1024 * 1024;
-            settings.platform.aram_size = 8 * 1024 * 1024;
-            settings.platform.bios_size = 128 * 1024;
-            settings.platform.flash_size = 0;
-            settings.platform.bbsram_size = 128 * 1024;
-            break;
-        default:
-            die("Unsupported platform");
-            break;
+    case DC_PLATFORM_DREAMCAST:
+        settings.platform.ram_size = 16 * 1024 * 1024;
+        settings.platform.vram_size = 8 * 1024 * 1024;
+        settings.platform.aram_size = 2 * 1024 * 1024;
+        settings.platform.bios_size = 2 * 1024 * 1024;
+        settings.platform.flash_size = 128 * 1024;
+        settings.platform.bbsram_size = 0;
+        break;
+    case DC_PLATFORM_NAOMI:
+        settings.platform.ram_size = 32 * 1024 * 1024;
+        settings.platform.vram_size = 16 * 1024 * 1024;
+        settings.platform.aram_size = 8 * 1024 * 1024;
+        settings.platform.bios_size = 2 * 1024 * 1024;
+        settings.platform.flash_size = 0;
+        settings.platform.bbsram_size = 32 * 1024;
+        break;
+    case DC_PLATFORM_ATOMISWAVE:
+        settings.platform.ram_size = 16 * 1024 * 1024;
+        settings.platform.vram_size = 8 * 1024 * 1024;
+        settings.platform.aram_size = 8 * 1024 * 1024;
+        settings.platform.bios_size = 128 * 1024;
+        settings.platform.flash_size = 0;
+        settings.platform.bbsram_size = 128 * 1024;
+        break;
+    default:
+        die("Unsupported platform");
+        break;
     }
     settings.platform.system = platform;
     settings.platform.ram_mask = settings.platform.ram_size - 1;
@@ -471,18 +471,18 @@ void set_platform(int platform)
     _vmem_init_mappings();
 }
 
-static void dc_init()
+void dc_init()
 {
     static bool init_done;
-    
+
     if (init_done)
         return;
-    
+
     // Default platform
     set_platform(DC_PLATFORM_DREAMCAST);
-    
+
     plugins_Init();
-    
+
 #if FEAT_SHREC != DYNAREC_NONE
     Get_Sh4Recompiler(&sh4_cpu);
     sh4_cpu.Init();        // Also initialize the interpreter
@@ -497,10 +497,10 @@ static void dc_init()
         sh4_cpu.Init();
         INFO_LOG(INTERPRETER, "Using Interpreter");
     }
-    
+
     mem_Init();
     reios_init();
-    
+
     init_done = true;
 }
 
@@ -511,7 +511,7 @@ static int get_game_platform(const char *path)
     if (path == NULL)
         // Dreamcast BIOS
         return DC_PLATFORM_DREAMCAST;
-    
+
     const char *dot = strrchr(path, '.');
     if (dot == NULL)
         return DC_PLATFORM_DREAMCAST;    // unknown
@@ -519,7 +519,7 @@ static int get_game_platform(const char *path)
         return naomi_cart_GetPlatform(path);
     if (!stricmp(dot, ".bin") || !stricmp(dot, ".dat") || !stricmp(dot, ".lst"))
         return DC_PLATFORM_NAOMI;
-    
+
     return DC_PLATFORM_DREAMCAST;
 }
 
@@ -527,12 +527,12 @@ void dc_start_game(const char *path)
 {
     if (path != NULL)
         cfgSetVirtual("config", "image", path);
-    
+
     dc_init();
-    
+
     set_platform(get_game_platform(path));
     mem_map_default();
-    
+
     InitSettings();
     dc_reset(true);
     LoadSettings(false);
@@ -540,22 +540,22 @@ void dc_start_game(const char *path)
     std::string data_path = get_readonly_data_path(DATA_PATH);
     if (settings.platform.system == DC_PLATFORM_DREAMCAST)
     {
-        if (settings.bios.UseReios || !LoadRomFiles(bios_dir))
+        if (settings.bios.UseReios || !LoadRomFiles(data_path))
         {
             if (!LoadHle(data_path))
                 throw ReicastException("Failed to initialize HLE BIOS");
-            
+
             NOTICE_LOG(BOOT, "Did not load BIOS, using reios");
         }
     }
     else
     {
-        LoadRomFiles(bios_dir);
+        LoadRomFiles(data_path);
     }
     if (settings.platform.system == DC_PLATFORM_DREAMCAST)
     {
         mcfg_CreateDevices();
-        
+
         if (path == NULL)
         {
             // Boot BIOS
@@ -609,9 +609,9 @@ void* dc_run(void*)
 #if FEAT_HAS_NIXPROF
     install_prof_handler(0);
 #endif
-    
+
     InitAudio();
-    
+
     if (settings.dynarec.Enable)
     {
         Get_Sh4Recompiler(&sh4_cpu);
@@ -624,18 +624,18 @@ void* dc_run(void*)
     }
     do {
         reset_requested = false;
-        
+
         sh4_cpu.Run();
-        
-        SaveRomFiles(get_writable_data_path(DATA_PATH));
-        if (reset_requested)
-        {
-            dc_reset(false);
-        }
+
+           SaveRomFiles(get_writable_data_path(DATA_PATH));
+           if (reset_requested)
+           {
+               dc_reset(false);
+           }
     } while (reset_requested);
-    
+
     TermAudio();
-    
+
     return NULL;
 }
 #endif
@@ -648,9 +648,9 @@ void dc_term()
     plugins_Term();
     mem_Term();
     _vmem_release();
-    
+
     mcfg_DestroyDevices();
-    
+
     SaveSettings();
 }
 
@@ -671,7 +671,7 @@ void dc_request_reset()
 void dc_exit()
 {
     dc_stop();
-    rend_stop_renderer();
+    rend_term_renderer();
 }
 
 void InitSettings()
@@ -714,20 +714,20 @@ void InitSettings()
     settings.rend.PerStripSorting    = false;
     settings.rend.DelayFrameSwapping = false;
     settings.rend.WidescreenGameHacks = false;
-    
+
     settings.pvr.ta_skip            = 0;
     settings.pvr.rend                = 0;
-    
+
     settings.pvr.MaxThreads            = 3;
     settings.pvr.SynchronousRender    = true;
-    
+
     settings.debug.SerialConsole    = false;
-    
+
     settings.bios.UseReios            = false;
     settings.reios.ElfFile            = "";
-    
+
     settings.validate.OpenGlChecks  = false;
-    
+
     settings.input.MouseSensitivity = 100;
     settings.input.JammaSetup = 0;
     settings.input.VirtualGamepadVibration = 20;
@@ -737,19 +737,19 @@ void InitSettings()
         settings.input.maple_expansion_devices[i][0] = i == 0 ? MDT_SegaVMU : MDT_None;
         settings.input.maple_expansion_devices[i][1] = i == 0 ? MDT_SegaVMU : MDT_None;
     }
-    
+
 #if SUPPORT_DISPMANX
     settings.dispmanx.Width        = 640;
     settings.dispmanx.Height    = 480;
     settings.dispmanx.Keep_Aspect = true;
 #endif
-    
+
 #if (HOST_OS != OS_LINUX || defined(__ANDROID__) || defined(TARGET_PANDORA))
     settings.aica.BufferSize = 2048;
 #else
     settings.aica.BufferSize = 1024;
 #endif
-    
+
 #if USE_OMX
     settings.omx.Audio_Latency    = 100;
     settings.omx.Audio_HDMI        = true;
@@ -761,7 +761,7 @@ void LoadSettings(bool game_specific)
     const char *config_section = game_specific ? cfgGetGameId() : "config";
     const char *input_section = game_specific ? cfgGetGameId() : "input";
     const char *audio_section = game_specific ? cfgGetGameId() : "audio";
-    
+
     settings.dynarec.Enable            = cfgLoadBool(config_section, "Dynarec.Enabled", settings.dynarec.Enable);
     settings.dynarec.idleskip        = cfgLoadBool(config_section, "Dynarec.idleskip", settings.dynarec.idleskip);
     settings.dynarec.unstable_opt    = cfgLoadBool(config_section, "Dynarec.unstable-opt", settings.dynarec.unstable_opt);
@@ -808,20 +808,22 @@ void LoadSettings(bool game_specific)
     settings.rend.PerStripSorting    = cfgLoadBool(config_section, "rend.PerStripSorting", settings.rend.PerStripSorting);
     settings.rend.DelayFrameSwapping = cfgLoadBool(config_section, "rend.DelayFrameSwapping", settings.rend.DelayFrameSwapping);
     settings.rend.WidescreenGameHacks = cfgLoadBool(config_section, "rend.WidescreenGameHacks", settings.rend.WidescreenGameHacks);
-    
+
     settings.pvr.ta_skip            = cfgLoadInt(config_section, "ta.skip", settings.pvr.ta_skip);
-    settings.pvr.rend                = cfgLoadInt(config_section, "pvr.rend", settings.pvr.rend);
-    
+    if (!game_specific)
+        // crashes if switching gl <-> vulkan
+        settings.pvr.rend                = cfgLoadInt(config_section, "pvr.rend", settings.pvr.rend);
+
     settings.pvr.MaxThreads            = cfgLoadInt(config_section, "pvr.MaxThreads", settings.pvr.MaxThreads);
     settings.pvr.SynchronousRender    = cfgLoadBool(config_section, "pvr.SynchronousRendering", settings.pvr.SynchronousRender);
-    
+
     settings.debug.SerialConsole    = cfgLoadBool(config_section, "Debug.SerialConsoleEnabled", settings.debug.SerialConsole);
-    
+
     settings.bios.UseReios            = cfgLoadBool(config_section, "bios.UseReios", settings.bios.UseReios);
     settings.reios.ElfFile            = cfgLoadStr(game_specific ? cfgGetGameId() : "reios", "ElfFile", settings.reios.ElfFile.c_str());
-    
+
     settings.validate.OpenGlChecks  = cfgLoadBool(game_specific ? cfgGetGameId() : "validate", "OpenGlChecks", settings.validate.OpenGlChecks);
-    
+
     settings.input.MouseSensitivity = cfgLoadInt(input_section, "MouseSensitivity", settings.input.MouseSensitivity);
     settings.input.JammaSetup = cfgLoadInt(input_section, "JammaSetup", settings.input.JammaSetup);
     settings.input.VirtualGamepadVibration = cfgLoadInt(input_section, "VirtualGamepadVibration", settings.input.VirtualGamepadVibration);
@@ -835,24 +837,24 @@ void LoadSettings(bool game_specific)
         sprintf(device_name, "device%d.2", i + 1);
         settings.input.maple_expansion_devices[i][1] = (MapleDeviceType)cfgLoadInt(input_section, device_name, settings.input.maple_expansion_devices[i][1]);
     }
-    
+
 #if SUPPORT_DISPMANX
     settings.dispmanx.Width        = cfgLoadInt(game_specific ? cfgGetGameId() : "dispmanx", "width", settings.dispmanx.Width);
     settings.dispmanx.Height    = cfgLoadInt(game_specific ? cfgGetGameId() : "dispmanx", "height", settings.dispmanx.Height);
     settings.dispmanx.Keep_Aspect    = cfgLoadBool(game_specific ? cfgGetGameId() : "dispmanx", "maintain_aspect", settings.dispmanx.Keep_Aspect);
 #endif
-    
+
 #if (HOST_OS != OS_LINUX || defined(__ANDROID__) || defined(TARGET_PANDORA))
     settings.aica.BufferSize=2048;
 #else
     settings.aica.BufferSize=1024;
 #endif
-    
+
 #if USE_OMX
     settings.omx.Audio_Latency    = cfgLoadInt(game_specific ? cfgGetGameId() : "omx", "audio_latency", settings.omx.Audio_Latency);
     settings.omx.Audio_HDMI        = cfgLoadBool(game_specific ? cfgGetGameId() : "omx", "audio_hdmi", settings.omx.Audio_HDMI);
 #endif
-    
+
     if (!game_specific)
     {
         settings.dreamcast.ContentPath.clear();
@@ -871,12 +873,12 @@ void LoadSettings(bool game_specific)
         }
         settings.dreamcast.HideLegacyNaomiRoms = cfgLoadBool(config_section, "Dreamcast.HideLegacyNaomiRoms", settings.dreamcast.HideLegacyNaomiRoms);
     }
-    /*
-     //make sure values are valid
-     settings.dreamcast.cable        = min(max(settings.dreamcast.cable,    0),3);
-     settings.dreamcast.region        = min(max(settings.dreamcast.region,   0),3);
-     settings.dreamcast.broadcast    = min(max(settings.dreamcast.broadcast,0),4);
-     */
+/*
+    //make sure values are valid
+    settings.dreamcast.cable        = min(max(settings.dreamcast.cable,    0),3);
+    settings.dreamcast.region        = min(max(settings.dreamcast.region,   0),3);
+    settings.dreamcast.broadcast    = min(max(settings.dreamcast.broadcast,0),4);
+*/
 }
 
 void LoadCustom()
@@ -885,11 +887,11 @@ void LoadCustom()
     if (settings.platform.system == DC_PLATFORM_DREAMCAST)
     {
         static char _disk_id[sizeof(ip_meta.product_number) + 1];
-        
+
         reios_disk_id();
         memcpy(_disk_id, ip_meta.product_number, sizeof(ip_meta.product_number));
         reios_id = _disk_id;
-        
+
         char *p = reios_id + strlen(reios_id) - 1;
         while (p >= reios_id && *p == ' ')
             *p-- = '\0';
@@ -901,18 +903,19 @@ void LoadCustom()
         reios_id = naomi_game_id;
         char *reios_software_name = naomi_game_id;
     }
-    
+
     // Default per-game settings
     LoadSpecialSettings();
-    
+
     cfgSetGameId(reios_id);
-    
+
     // Reload per-game settings
     LoadSettings(true);
 }
 
 void SaveSettings()
 {
+    cfgSetAutoSave(false);
     cfgSaveBool("config", "Dynarec.Enabled", settings.dynarec.Enable);
     if (forced_game_cable == -1 || forced_game_cable != settings.dreamcast.cable)
         cfgSaveInt("config", "Dreamcast.Cable", settings.dreamcast.cable);
@@ -925,34 +928,25 @@ void SaveSettings()
     if (!safemode_game || !settings.dynarec.safemode)
         cfgSaveBool("config", "Dynarec.safe-mode", settings.dynarec.safemode);
     cfgSaveBool("config", "bios.UseReios", settings.bios.UseReios);
-    
-    //    if (!disable_vmem32_game || !settings.dynarec.disable_vmem32)
-    //        cfgSaveBool("config", "Dynarec.DisableVmem32", settings.dynarec.disable_vmem32);
+
+//    if (!disable_vmem32_game || !settings.dynarec.disable_vmem32)
+//        cfgSaveBool("config", "Dynarec.DisableVmem32", settings.dynarec.disable_vmem32);
     cfgSaveInt("config", "Dreamcast.Language", settings.dreamcast.language);
     cfgSaveInt("config", "aica.LimitFPS", (int)settings.aica.LimitFPS);
     cfgSaveBool("config", "aica.DSPEnabled", settings.aica.DSPEnabled);
     cfgSaveBool("config", "aica.NoSound", settings.aica.NoSound);
     cfgSaveStr("audio", "backend", settings.audio.backend.c_str());
-    
+
     // Write backend specific settings
     // std::map<std::string, std::map<std::string, std::string>>
-    for (std::map<std::string, std::map<std::string, std::string>>::iterator it = settings.audio.options.begin(); it != settings.audio.options.end(); ++it)
+    for (const auto& pair : settings.audio.options)
     {
-        
-        std::pair<std::string, std::map<std::string, std::string>> p = (std::pair<std::string, std::map<std::string, std::string>>)*it;
-        std::string section = p.first;
-        std::map<std::string, std::string> options = p.second;
-        
-        for (std::map<std::string, std::string>::iterator it2 = options.begin(); it2 != options.end(); ++it2)
-        {
-            std::pair<std::string, std::string> p2 = (std::pair<std::string, std::string>)*it2;
-            std::string key = p2.first;
-            std::string val = p2.second;
-            
-            cfgSaveStr(section.c_str(), key.c_str(), val.c_str());
-        }
+        const std::string& section = pair.first;
+        const auto& options = pair.second;
+        for (const auto& option : options)
+            cfgSaveStr(section.c_str(), option.first.c_str(), option.second.c_str());
     }
-    
+
     cfgSaveBool("config", "rend.WideScreen", settings.rend.WideScreen);
     cfgSaveBool("config", "rend.ShowFPS", settings.rend.ShowFPS);
     if (!rtt_to_buffer_game || !settings.rend.RenderToTextureBuffer)
@@ -977,10 +971,10 @@ void SaveSettings()
     cfgSaveBool("config", "rend.PerStripSorting", settings.rend.PerStripSorting);
     cfgSaveBool("config", "rend.DelayFrameSwapping", settings.rend.DelayFrameSwapping);
     cfgSaveBool("config", "rend.WidescreenGameHacks", settings.rend.WidescreenGameHacks);
-    
+
     cfgSaveInt("config", "pvr.MaxThreads", settings.pvr.MaxThreads);
     cfgSaveBool("config", "pvr.SynchronousRendering", settings.pvr.SynchronousRender);
-    
+
     cfgSaveBool("config", "Debug.SerialConsoleEnabled", settings.debug.SerialConsole);
     cfgSaveInt("input", "MouseSensitivity", settings.input.MouseSensitivity);
     cfgSaveInt("input", "VirtualGamepadVibration", settings.input.VirtualGamepadVibration);
@@ -1004,13 +998,15 @@ void SaveSettings()
     }
     cfgSaveStr("config", "Dreamcast.ContentPath", paths.c_str());
     cfgSaveBool("config", "Dreamcast.HideLegacyNaomiRoms", settings.dreamcast.HideLegacyNaomiRoms);
-    
+
     GamepadDevice::SaveMaplePorts();
-    
+
 #ifdef __ANDROID__
     void SaveAndroidSettings();
     SaveAndroidSettings();
 #endif
+
+    cfgSetAutoSave(true);
 }
 
 void dc_resume()
@@ -1022,7 +1018,7 @@ static void cleanup_serialize(void *data)
 {
     if ( data != NULL )
         free(data) ;
-    
+
     dc_resume();
 }
 
@@ -1039,9 +1035,9 @@ void dc_savestate()
     void *data = NULL ;
     void *data_ptr = NULL ;
     FILE *f ;
-    
+
     dc_stop();
-    
+
     if ( ! dc_serialize(&data, &total_size) )
     {
         WARN_LOG(SAVESTATE, "Failed to save state - could not initialize total size") ;
@@ -1049,7 +1045,7 @@ void dc_savestate()
         cleanup_serialize(data) ;
         return;
     }
-    
+
     data = malloc(total_size) ;
     if ( data == NULL )
     {
@@ -1058,9 +1054,9 @@ void dc_savestate()
         cleanup_serialize(data) ;
         return;
     }
-    
+
     data_ptr = data ;
-    
+
     if ( ! dc_serialize(&data_ptr, &total_size) )
     {
         WARN_LOG(SAVESTATE, "Failed to save state - could not serialize data") ;
@@ -1068,10 +1064,10 @@ void dc_savestate()
         cleanup_serialize(data) ;
         return;
     }
-    
+
     filename = get_savestate_file_path();
     f = fopen(filename.c_str(), "wb") ;
-    
+
     if ( f == NULL )
     {
         WARN_LOG(SAVESTATE, "Failed to save state - could not open %s for writing", filename.c_str()) ;
@@ -1079,10 +1075,10 @@ void dc_savestate()
         cleanup_serialize(data) ;
         return;
     }
-    
+
     fwrite(data, 1, total_size, f) ;
     fclose(f);
-    
+
     cleanup_serialize(data) ;
     INFO_LOG(SAVESTATE, "Saved state to %s size %d", filename.c_str(), total_size) ;
     gui_display_notification("State saved", 1000);
@@ -1095,12 +1091,12 @@ void dc_loadstate()
     void *data = NULL ;
     void *data_ptr = NULL ;
     FILE *f ;
-    
+
     dc_stop();
-    
+
     filename = get_savestate_file_path();
     f = fopen(filename.c_str(), "rb") ;
-    
+
     if ( f == NULL )
     {
         WARN_LOG(SAVESTATE, "Failed to load state - could not open %s for reading", filename.c_str()) ;
@@ -1119,7 +1115,7 @@ void dc_loadstate()
         cleanup_serialize(data) ;
         return;
     }
-    
+
     size_t read_size = fread(data, 1, total_size, f) ;
     fclose(f);
     if (read_size != total_size)
@@ -1129,9 +1125,9 @@ void dc_loadstate()
         cleanup_serialize(data) ;
         return;
     }
-    
+
     data_ptr = data ;
-    
+
 #if FEAT_AREC == DYNAREC_JIT
     FlushCache();
 #endif
@@ -1139,7 +1135,7 @@ void dc_loadstate()
     mmu_flush_table();
 #endif
     bm_Reset();
-    
+
     u32 unserialized_size = 0;
     if ( ! dc_unserialize(&data_ptr, &unserialized_size) )
     {
@@ -1150,13 +1146,13 @@ void dc_loadstate()
     }
     if (unserialized_size != total_size)
         WARN_LOG(SAVESTATE, "Save state error: read %d bytes but used %d", total_size, unserialized_size);
-    
+
     mmu_set_state();
     sh4_cpu.ResetCache();
     dsp.dyndirty = true;
     sh4_sched_ffts();
     CalculateSync();
-    
+
     cleanup_serialize(data) ;
     INFO_LOG(SAVESTATE, "Loaded state from %s size %d", filename.c_str(), total_size) ;
 }
