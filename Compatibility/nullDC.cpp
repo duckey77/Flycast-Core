@@ -540,7 +540,7 @@ void dc_start_game(const char *path)
     std::string data_path = get_readonly_data_path(DATA_PATH);
     if (settings.platform.system == DC_PLATFORM_DREAMCAST)
     {
-        if (settings.bios.UseReios || !LoadRomFiles(data_path))
+        if (settings.bios.UseReios || !LoadRomFiles(bios_dir))
         {
             if (!LoadHle(data_path))
                 throw ReicastException("Failed to initialize HLE BIOS");
@@ -671,7 +671,7 @@ void dc_request_reset()
 void dc_exit()
 {
     dc_stop();
-    rend_term_renderer();
+    rend_stop_renderer();
 }
 
 void InitSettings()
