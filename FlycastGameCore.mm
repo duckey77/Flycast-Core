@@ -43,6 +43,7 @@
 
 #include "cfg/cfg.h"
 #include "rend/gui.h"
+#include "wsi/context.h"
 
 #define SAMPLERATE 44100
 #define SIZESOUNDBUFFER 44100 / 60 * 4
@@ -152,6 +153,7 @@ volatile bool has_init = false;
     snprintf(bios_dir,sizeof(bios_dir),"%s%c",[[self biosDirectoryPath] UTF8String],'/');
     
     //Initialize core gles
+    InitRenderApi();
     rend_init_renderer();
     
     char* argv[] = { "reicast" };
@@ -175,18 +177,6 @@ volatile bool has_init = false;
 {
     screen_width = videoWidth;
     screen_height = videoHeight;
-}
-
-- (void)setPauseEmulation:(BOOL)paused
-{
-        if(!has_init || !system_init)
-            return;
-    
-       if (paused) {
-           dc_stop();
-       } else {
-           dc_resume();
-       }
 }
 
 - (void)stopEmulation
