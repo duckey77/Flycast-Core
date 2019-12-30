@@ -222,11 +222,16 @@ volatile bool has_init = false;
         screen_height = videoHeight;
         screen_width = videoWidth;
         
-        [self.renderDelegate presentDoubleBufferedFBO];
+        if ([self needsDoubleBufferedFBO])
+           [self.renderDelegate presentDoubleBufferedFBO];
+        else
+           [self.renderDelegate presentationFramebuffer];
+                   
         
         rend_single_frame();
         
         calcFPS();
+
     }
 }
 
@@ -380,18 +385,13 @@ void os_SetupInput()
 {
     // Create contollers, but only put vmu on the first controller
 #if DC_PLATFORM == DC_PLATFORM_DREAMCAST
-    // Create first controller
-    settings.input.maple_devices[0] = MDT_SegaController;
-    settings.input.maple_expansion_devices[0][0] = MDT_SegaVMU;
-    settings.input.maple_expansion_devices[0][1] = MDT_SegaVMU;
-    
-    // Add additional controllers
-    for (int i = 1; i < DC_Contollers; i++)
+   for (int i = 0; i < DC_Contollers; i++)
     {
         settings.input.maple_devices[i] = MDT_SegaController;
-        settings.input.maple_expansion_devices[i][0] = MDT_None;
-        settings.input.maple_expansion_devices[i][1] = MDT_None;
+        settings.input.maple_expansion_devices[i][0] = i == 0 ? MDT_SegaVMU : MDT_None;
+        settings.input.maple_expansion_devices[i][1] = i == 0 ? MDT_SegaVMU : MDT_None;
     }
+    
     mcfg_CreateDevices();
 #endif
 }
@@ -442,7 +442,7 @@ void handle_key(int dckey, int state, int player)
 
 - (oneway void)didMoveDCJoystickDirection:(OEDCButton)button withValue:(CGFloat)value forPlayer:(NSUInteger)player
 {
-    if (player < DC_Contollers) return;
+    if (player > DC_Contollers) return;
     
     player -= 1;
     
@@ -473,7 +473,7 @@ void handle_key(int dckey, int state, int player)
 
 -(oneway void)didPushDCButton:(OEDCButton)button forPlayer:(NSUInteger)player
 {
-    if (player < DC_Contollers) return;
+    if (player > DC_Contollers) return;
     
     player -= 1;
     
@@ -512,7 +512,7 @@ void handle_key(int dckey, int state, int player)
 
 - (oneway void)didReleaseDCButton:(OEDCButton)button forPlayer:(NSUInteger)player
 {
-    if (player < DC_Contollers) return;
+    if (player > DC_Contollers) return;
     
     player -= 1;
     

@@ -829,13 +829,9 @@ void LoadSettings(bool game_specific)
     settings.input.VirtualGamepadVibration = cfgLoadInt(input_section, "VirtualGamepadVibration", settings.input.VirtualGamepadVibration);
     for (int i = 0; i < MAPLE_PORTS; i++)
     {
-        char device_name[32];
-        sprintf(device_name, "device%d", i + 1);
-        settings.input.maple_devices[i] = (MapleDeviceType)cfgLoadInt(input_section, device_name, settings.input.maple_devices[i]);
-        sprintf(device_name, "device%d.1", i + 1);
-        settings.input.maple_expansion_devices[i][0] = (MapleDeviceType)cfgLoadInt(input_section, device_name, settings.input.maple_expansion_devices[i][0]);
-        sprintf(device_name, "device%d.2", i + 1);
-        settings.input.maple_expansion_devices[i][1] = (MapleDeviceType)cfgLoadInt(input_section, device_name, settings.input.maple_expansion_devices[i][1]);
+        settings.input.maple_devices[i] = i == 0 ? MDT_SegaController : MDT_None;
+        settings.input.maple_expansion_devices[i][0] = i == 0 ? MDT_SegaVMU : MDT_None;
+        settings.input.maple_expansion_devices[i][1] = i == 0 ? MDT_SegaVMU : MDT_None;
     }
 
 #if SUPPORT_DISPMANX
