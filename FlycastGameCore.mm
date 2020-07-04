@@ -26,29 +26,42 @@
 
 #import "FlycastGameCore.h"
 #import <OpenEmuBase/OERingBuffer.h>
-
-#include "oslib/audiostream.h"
-#include "audiobackend_openemu.h"
-
 #import <Carbon/Carbon.h>
 
+#include "audiobackend_openemu.h"
+
 #include "types.h"
+#include "emulator.h"
+#include "stdclass.h"
+#include "cheats.h"
+#include "cfg/cfg.h"
+#include "hw/mem/_vmem.h"
 #include "hw/maple/maple_cfg.h"
+#include "hw/maple/maple_devs.h"
+#include "hw/pvr/Renderer_if.h"
+#include "hw/pvr/pvr_mem.h"
+#include "oslib/oslib.h"
+#include "oslib/audiostream.h"
+#include "rend/gui.h"
+#include "rend/TexCache.h"
 #include <sys/stat.h>
+#include "wsi/context.h"
 
 #include <OpenGL/gl3.h>
-
-#include "rend/rend.h"
 #include <functional>
-
-#include "cfg/cfg.h"
-#include "rend/gui.h"
-#include "wsi/context.h"
 
 #define SAMPLERATE 44100
 #define SIZESOUNDBUFFER 44100 / 60 * 4
 #define DC_PLATFORM DC_PLATFORM_DREAMCAST
 #define DC_Contollers 4
+
+#if 1    /* was set to #if 1 by ./configure */
+#  define Z_HAVE_UNISTD_H
+#endif
+
+#if 1    /* was set to #if 1 by ./configure */
+#  define Z_HAVE_STDARG_H
+#endif
 
 typedef std::function<void(bool status, const std::string &message, void *cbUserData)> Callback;
 
@@ -98,6 +111,7 @@ extern int reicast_init(int argc, char* argv[]);
 extern void dc_exit();
 extern void dc_resume();
 extern void dc_stop();
+extern void dc_run();
 extern void dc_reset(bool manual);
 extern void dc_request_reset();
 extern void dc_start_game(const char *path);
@@ -111,10 +125,10 @@ extern void dc_savestate();
 extern void dc_loadstate();
 extern void dc_SetStateName (const std::string &fileName);
 
-int darw_printf(const wchar* text,...) {
+int darw_printf(const char* text,...) {
     va_list args;
     
-    wchar temp[2048];
+    char temp[2048];
     va_start(args, text);
     vsprintf(temp, text, args);
     va_end(args);
@@ -210,6 +224,8 @@ volatile bool has_init = false;
         gui_state = Closed;
         
         dc_start_game([romPath UTF8String]);
+        
+        dc_resume();
     }
     
     //System is initialized - render the frames
@@ -218,20 +234,20 @@ volatile bool has_init = false;
     
     if (rend_framePending())
     {
-        system_init = true;
-        screen_height = videoHeight;
-        screen_width = videoWidth;
+        if (!system_init){
+            system_init = true;
+            screen_height = videoHeight;
+            screen_width = videoWidth;
+        }
         
         if ([self needsDoubleBufferedFBO])
            [self.renderDelegate presentDoubleBufferedFBO];
         else
            [self.renderDelegate presentationFramebuffer];
                    
-        
         rend_single_frame();
         
         calcFPS();
-
     }
 }
 
@@ -355,6 +371,7 @@ void calcFPS(){
         dc_SetStateName(fileName.fileSystemRepresentation);
         dc_savestate();
         
+        dc_resume();
         [self endPausedExecution];
         block(true, nil);
     }
@@ -373,6 +390,7 @@ void calcFPS(){
         
         dc_SetStateName(fileName.fileSystemRepresentation);
         dc_loadstate();
+        dc_resume();
         [self endPausedExecution];
     }
     
@@ -403,9 +421,9 @@ void UpdateVibration(u32 port, u32 value) {}
 int get_mic_data(u8* buffer) { return 0; }
 int push_vmu_screen(u8* buffer) { return 0; }
 
-u16 kcode[4] = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF };
-s8 joyx[4],joyy[4];
-u8 rt[4],lt[4];
+extern u16 kcode[4] ; //= { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF };
+extern s8 joyx[4],joyy[4];
+extern u8 rt[4],lt[4];
 
 enum DCPad
 {

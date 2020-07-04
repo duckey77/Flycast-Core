@@ -1,23 +1,28 @@
 // nullDC.cpp : Makes magic cookies
 //
+#include <atomic>
+#include <future>
+#include <thread>
 
 //initialse Emu
 #include "types.h"
+#include "emulator.h"
 #include "oslib/oslib.h"
 #include "oslib/audiostream.h"
 #include "hw/mem/_vmem.h"
 #include "stdclass.h"
 #include "cfg/cfg.h"
 
-#include "types.h"
 #include "hw/maple/maple_cfg.h"
 #include "hw/sh4/sh4_mem.h"
 
 #include "hw/naomi/naomi_cart.h"
 #include "reios/reios.h"
 #include "hw/sh4/sh4_sched.h"
+#include "hw/sh4/sh4_if.h"
 #include "hw/pvr/Renderer_if.h"
 #include "hw/pvr/spg.h"
+#include "hw/aica/aica_if.h"
 #include "hw/aica/dsp.h"
 #include "imgread/common.h"
 #include "rend/gui.h"
@@ -26,18 +31,19 @@
 #include "hw/sh4/dyna/blockmanager.h"
 #include "log/LogManager.h"
 #include "cheats.h"
+#include "rend/CustomTexture.h"
+#include "hw/maple/maple_devs.h"
+#include "network/naomi_network.h"
 
 void FlushCache();
-void LoadCustom();
-void* dc_run(void*);
-void dc_resume();
+static void LoadCustom();
 
 extern bool fast_forward_mode;
 
 //OpenEmu start
 
 #include <functional>
-string OEStateFilePath;
+std::string OEStateFilePath;
 
 extern char bios_dir[1024];
 
@@ -61,56 +67,10 @@ static int saved_screen_stretching = -1;
 
 cThread emu_thread(&dc_run, NULL);
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
+static std::future<void> loading_done;
+std::atomic<bool> loading_canceled;
 
-/**
- * cpu_features_get_time_usec:
- *
- * Gets time in microseconds.
- *
- * Returns: time in microseconds.
- **/
-int64_t get_time_usec(void)
-{
-#ifdef _WIN32
-   static LARGE_INTEGER freq;
-   LARGE_INTEGER count;
-
-   /* Frequency is guaranteed to not change. */
-   if (!freq.QuadPart && !QueryPerformanceFrequency(&freq))
-      return 0;
-
-   if (!QueryPerformanceCounter(&count))
-      return 0;
-   return count.QuadPart * 1000000 / freq.QuadPart;
-#elif defined(_POSIX_MONOTONIC_CLOCK) || defined(__QNX__) || defined(__ANDROID__) || defined(__MACH__) || HOST_OS==OS_LINUX
-   struct timespec tv = {0};
-   if (clock_gettime(CLOCK_MONOTONIC, &tv) < 0)
-      return 0;
-   return tv.tv_sec * INT64_C(1000000) + (tv.tv_nsec + 500) / 1000;
-#elif defined(EMSCRIPTEN)
-   return emscripten_get_now() * 1000;
-#elif defined(__mips__) || defined(DJGPP)
-   struct timeval tv;
-   gettimeofday(&tv,NULL);
-   return (1000000 * tv.tv_sec + tv.tv_usec);
-#else
-#error "Your platform does not have a timer function implemented in cpu_features_get_time_usec(). Cannot continue."
-#endif
-}
-
-
-int GetFile(char *szFileName, char *szParse /* = 0 */, u32 flags /* = 0 */)
-{
-    cfgLoadStr("config", "image", szFileName, "");
-
-    return szFileName[0] != '\0' ? 1 : 0;
-}
-
-
-s32 plugins_Init()
+static s32 plugins_Init()
 {
 
     if (s32 rv = libPvr_Init())
@@ -130,7 +90,7 @@ s32 plugins_Init()
     return 0;
 }
 
-void plugins_Term()
+static void plugins_Term()
 {
     //term all plugins
     libARM_Term();
@@ -139,7 +99,7 @@ void plugins_Term()
     libPvr_Term();
 }
 
-void plugins_Reset(bool hard)
+static void plugins_Reset(bool hard)
 {
     libPvr_Reset(hard);
     libGDR_Reset(hard);
@@ -148,7 +108,7 @@ void plugins_Reset(bool hard)
     //libExtDevice_Reset(Manual);
 }
 
-void LoadSpecialSettings()
+static void LoadSpecialSettings()
 {
     if (settings.platform.system == DC_PLATFORM_DREAMCAST)
     {
@@ -210,17 +170,6 @@ void LoadSpecialSettings()
             settings.rend.TranslucentPolygonDepthMask = 1;
             tr_poly_depth_mask_game = true;
         }
-        // Demolition Racer
-        if (!strncmp("T15112N", prod_id, 7)
-                // Ducati World - Racing Challenge (NTSC)
-                || !strncmp("T-8113N", prod_id, 7)
-                // Ducati World (PAL)
-                || !strncmp("T-8121D-50", prod_id, 10))
-        {
-            INFO_LOG(BOOT, "Enabling Dynarec safe mode for game %s", prod_id);
-            settings.dynarec.safemode = 1;
-            safemode_game = true;
-        }
         // NHL 2K2
         if (!strncmp("MK-51182", prod_id, 8))
         {
@@ -259,7 +208,8 @@ void LoadSpecialSettings()
             || !strncmp("T40209N", prod_id, 7)
             // StarLancer (EU) (for online support)
             || !strncmp("T17723D 05", prod_id, 10)
-            )
+            // Heroes of might and magic III
+            || !strncmp("T0000M", prod_id, 6))
         {
             INFO_LOG(BOOT, "Disabling 32-bit virtual memory for game %s", prod_id);
             settings.dynarec.disable_vmem32 = true;
@@ -316,61 +266,32 @@ void LoadSpecialSettings()
             settings.dreamcast.cable = 3;
             forced_game_cable = settings.dreamcast.cable;
         }
+        if (settings.dreamcast.cable == 2 &&
+                (!strncmp("T40602N", prod_id, 7)    // Centipede
+                || !strncmp("T9710N", prod_id, 6)    // Gauntlet Legends (US)
+                || !strncmp("MK-51152", prod_id, 8) // World Series Baseball 2K2
+                || !strncmp("T-9701N", prod_id, 7)    // Mortal Kombat Gold (US)
+                || !strncmp("T1203N", prod_id, 6)    // Street Fighter Alpha 3 (US)
+                || !strncmp("T1203M", prod_id, 6)    // Street Fighter Zero 3 (JP)
+                || !strncmp("T13002N", prod_id, 7)    // Vigilante 8 (US)
+                || !strncmp("T13003N", prod_id, 7)    // Toy Story 2 (US)
+                || !strncmp("T1209N", prod_id, 6)    // Gigawing (US)
+                || !strncmp("T1208M", prod_id, 6)    // Gigawing (JP)
+                || !strncmp("T1235M", prod_id, 6)))    // Vampire Chronicle for Matching Service
+        {
+            NOTICE_LOG(BOOT, "Game doesn't support RGB. Using TV Composite instead");
+            settings.dreamcast.cable = 3;
+            forced_game_cable = settings.dreamcast.cable;
+        }
     }
     else if (settings.platform.system == DC_PLATFORM_NAOMI || settings.platform.system == DC_PLATFORM_ATOMISWAVE)
     {
         NOTICE_LOG(BOOT, "Game ID is [%s]", naomi_game_id);
-
-        if (!strcmp("METAL SLUG 6", naomi_game_id) || !strcmp("WAVE RUNNER GP", naomi_game_id))
-        {
-            INFO_LOG(BOOT, "Enabling Dynarec safe mode for game %s", naomi_game_id);
-            settings.dynarec.safemode = 1;
-            safemode_game = true;
-        }
         if (!strcmp("SAMURAI SPIRITS 6", naomi_game_id))
         {
             INFO_LOG(BOOT, "Enabling Extra depth scaling for game %s", naomi_game_id);
             settings.rend.ExtraDepthScale = 1e26;
             extra_depth_game = true;
-        }
-        if (!strcmp("DYNAMIC GOLF", naomi_game_id)
-                || !strcmp("SHOOTOUT POOL", naomi_game_id)
-                || !strcmp("OUTTRIGGER     JAPAN", naomi_game_id)
-                || !strcmp("CRACKIN'DJ  ver JAPAN", naomi_game_id)
-                || !strcmp("CRACKIN'DJ PART2  ver JAPAN", naomi_game_id)
-                || !strcmp("KICK '4' CASH", naomi_game_id))
-        {
-            INFO_LOG(BOOT, "Enabling JVS rotary encoders for game %s", naomi_game_id);
-            settings.input.JammaSetup = 2;
-        }
-        else if (!strcmp("POWER STONE 2 JAPAN", naomi_game_id)        // Naomi
-                || !strcmp("GUILTY GEAR isuka", naomi_game_id))        // AW
-        {
-            INFO_LOG(BOOT, "Enabling 4-player setup for game %s", naomi_game_id);
-            settings.input.JammaSetup = 1;
-        }
-        else if (!strcmp("SEGA MARINE FISHING JAPAN", naomi_game_id)
-                    || !strcmp(naomi_game_id, "BASS FISHING SIMULATOR VER.A"))    // AW
-        {
-            INFO_LOG(BOOT, "Enabling specific JVS setup for game %s", naomi_game_id);
-            settings.input.JammaSetup = 3;
-        }
-        else if (!strcmp("RINGOUT 4X4 JAPAN", naomi_game_id))
-        {
-            INFO_LOG(BOOT, "Enabling specific JVS setup for game %s", naomi_game_id);
-            settings.input.JammaSetup = 4;
-        }
-        else if (!strcmp("NINJA ASSAULT", naomi_game_id)
-                    || !strcmp(naomi_game_id, "Sports Shooting USA")    // AW
-                    || !strcmp(naomi_game_id, "SEGA CLAY CHALLENGE"))    // AW
-        {
-            INFO_LOG(BOOT, "Enabling lightgun setup for game %s", naomi_game_id);
-            settings.input.JammaSetup = 5;
-        }
-        else if (!strcmp(" BIOHAZARD  GUN SURVIVOR2", naomi_game_id))
-        {
-            INFO_LOG(BOOT, "Enabling specific JVS setup for game %s", naomi_game_id);
-            settings.input.JammaSetup = 7;
         }
         if (!strcmp("COSMIC SMASH IN JAPAN", naomi_game_id))
         {
@@ -378,6 +299,101 @@ void LoadSpecialSettings()
             settings.rend.TranslucentPolygonDepthMask = true;
             tr_poly_depth_mask_game = true;
         }
+        // Input configuration
+        if (!strcmp("DYNAMIC GOLF", naomi_game_id)
+                || !strcmp("SHOOTOUT POOL", naomi_game_id)
+                || !strcmp("SHOOTOUT POOL MEDAL", naomi_game_id)
+                || !strcmp("CRACKIN'DJ  ver JAPAN", naomi_game_id)
+                || !strcmp("CRACKIN'DJ PART2  ver JAPAN", naomi_game_id)
+                || !strcmp("KICK '4' CASH", naomi_game_id)
+                || !strcmp("DRIVE", naomi_game_id))            // Waiwai drive
+        {
+            INFO_LOG(BOOT, "Enabling JVS rotary encoders for game %s", naomi_game_id);
+            settings.input.JammaSetup = JVS::RotaryEncoders;
+        }
+        else if (!strcmp("POWER STONE 2 JAPAN", naomi_game_id)        // Naomi
+                || !strcmp("GUILTY GEAR isuka", naomi_game_id))        // AW
+        {
+            INFO_LOG(BOOT, "Enabling 4-player setup for game %s", naomi_game_id);
+            settings.input.JammaSetup = JVS::FourPlayers;
+        }
+        else if (!strcmp("SEGA MARINE FISHING JAPAN", naomi_game_id)
+                    || !strcmp(naomi_game_id, "BASS FISHING SIMULATOR VER.A"))    // AW
+        {
+            INFO_LOG(BOOT, "Enabling specific JVS setup for game %s", naomi_game_id);
+            settings.input.JammaSetup = JVS::SegaMarineFishing;
+        }
+        else if (!strcmp("RINGOUT 4X4 JAPAN", naomi_game_id))
+        {
+            INFO_LOG(BOOT, "Enabling specific JVS setup for game %s", naomi_game_id);
+            settings.input.JammaSetup = JVS::DualIOBoards4P;
+        }
+        else if (!strcmp("NINJA ASSAULT", naomi_game_id)
+                    || !strcmp(naomi_game_id, "Sports Shooting USA")    // AW
+                    || !strcmp(naomi_game_id, "SEGA CLAY CHALLENGE")    // AW
+                    || !strcmp(naomi_game_id, "RANGER MISSION")            // AW
+                    || !strcmp(naomi_game_id, "EXTREME HUNTING"))        // AW
+        {
+            INFO_LOG(BOOT, "Enabling lightgun setup for game %s", naomi_game_id);
+            settings.input.JammaSetup = JVS::LightGun;
+        }
+        else if (!strcmp("MAZAN", naomi_game_id))
+        {
+            INFO_LOG(BOOT, "Enabling specific JVS setup for game %s", naomi_game_id);
+            settings.input.JammaSetup = JVS::Mazan;
+        }
+        else if (!strcmp(" BIOHAZARD  GUN SURVIVOR2", naomi_game_id))
+        {
+            INFO_LOG(BOOT, "Enabling specific JVS setup for game %s", naomi_game_id);
+            settings.input.JammaSetup = JVS::GunSurvivor;
+        }
+        else if (!strcmp("WORLD KICKS", naomi_game_id))
+        {
+            INFO_LOG(BOOT, "Enabling specific JVS setup for game %s", naomi_game_id);
+            settings.input.JammaSetup = JVS::WorldKicks;
+        }
+        else if (!strcmp("WORLD KICKS PCB", naomi_game_id))
+        {
+            INFO_LOG(BOOT, "Enabling specific JVS setup for game %s", naomi_game_id);
+            settings.input.JammaSetup = JVS::WorldKicksPCB;
+        }
+        else if (!strcmp("THE TYPING OF THE DEAD", naomi_game_id)
+                || !strcmp(" LUPIN THE THIRD  -THE TYPING-", naomi_game_id)
+                || !strcmp("------La Keyboardxyu------", naomi_game_id))
+        {
+            INFO_LOG(BOOT, "Enabling keyboard for game %s", naomi_game_id);
+            settings.input.JammaSetup = JVS::Keyboard;
+        }
+        else if (!strcmp("OUTTRIGGER     JAPAN", naomi_game_id))
+        {
+            INFO_LOG(BOOT, "Enabling JVS rotary encoders for game %s", naomi_game_id);
+            settings.input.JammaSetup = JVS::OutTrigger;
+        }
+        else if (!strcmp(naomi_game_id, "THE MAZE OF THE KINGS")
+                || !strcmp(naomi_game_id, " CONFIDENTIAL MISSION ---------")
+                || !strcmp(naomi_game_id, "DEATH CRIMSON OX")
+                || !strncmp(naomi_game_id, "hotd2", 5))    // House of the Dead 2
+        {
+            INFO_LOG(BOOT, "Enabling lightgun as analog setup for game %s", naomi_game_id);
+            settings.input.JammaSetup = JVS::LightGunAsAnalog;
+        }
+        else if (!strcmp("WAVE RUNNER GP", naomi_game_id))
+        {
+            INFO_LOG(BOOT, "Enabling specific JVS setup for game %s", naomi_game_id);
+            settings.input.JammaSetup = JVS::WaveRunnerGP;
+        }
+        else if (!strcmp("INU NO OSANPO", naomi_game_id))    // Dog Walking
+        {
+            INFO_LOG(BOOT, "Enabling specific JVS setup for game %s", naomi_game_id);
+            settings.input.JammaSetup = JVS::DogWalking;
+        }
+        else if (!strcmp(" TOUCH DE UNOH -------------", naomi_game_id)
+                || !strcmp("POKASUKA GHOST (JAPANESE)", naomi_game_id))
+        {
+            INFO_LOG(BOOT, "Enabling specific JVS setup for game %s", naomi_game_id);
+            settings.input.JammaSetup = JVS::TouchDeUno;
+        }
+        settings.rend.Rotate90 = naomi_rotate_screen;
     }
 }
 
@@ -430,7 +446,7 @@ int reicast_init(int argc, char* argv[])
     return 0;
 }
 
-void set_platform(int platform)
+static void set_platform(int platform)
 {
     if (VRAM_SIZE != 0)
         _vmem_unprotect_vram(0, VRAM_SIZE);
@@ -512,12 +528,12 @@ static int get_game_platform(const char *path)
         // Dreamcast BIOS
         return DC_PLATFORM_DREAMCAST;
 
-    const char *dot = strrchr(path, '.');
-    if (dot == NULL)
+    std::string extension = get_file_extension(path);
+    if (extension == "")
         return DC_PLATFORM_DREAMCAST;    // unknown
-    if (!stricmp(dot, ".zip") || !stricmp(dot, ".7z"))
+    if (extension == "zip" || extension == "7z")
         return naomi_cart_GetPlatform(path);
-    if (!stricmp(dot, ".bin") || !stricmp(dot, ".dat") || !stricmp(dot, ".lst"))
+    if (extension == "bin" || extension == "dat" || extension == "lst")
         return DC_PLATFORM_NAOMI;
 
     return DC_PLATFORM_DREAMCAST;
@@ -525,8 +541,19 @@ static int get_game_platform(const char *path)
 
 void dc_start_game(const char *path)
 {
+    DEBUG_LOG(BOOT, "Loading game %s", path == nullptr ? "(nil)" : path);
+    bool forced_bios_file = false;
+
     if (path != NULL)
-        cfgSetVirtual("config", "image", path);
+    {
+        strcpy(settings.imgread.ImagePath, path);
+    }
+    else
+    {
+        // Booting the BIOS requires a BIOS file
+        forced_bios_file = true;
+        settings.imgread.ImagePath[0] = '\0';
+    }
 
     dc_init();
 
@@ -540,8 +567,11 @@ void dc_start_game(const char *path)
     std::string data_path = get_readonly_data_path(DATA_PATH);
     if (settings.platform.system == DC_PLATFORM_DREAMCAST)
     {
-        if (settings.bios.UseReios || !LoadRomFiles(bios_dir))
+        if ((settings.bios.UseReios && !forced_bios_file) || !LoadRomFiles(bios_dir))
         {
+            if (forced_bios_file)
+                throw ReicastException("No BIOS file found");
+
             if (!LoadHle(data_path))
                 throw ReicastException("Failed to initialize HLE BIOS");
 
@@ -564,17 +594,35 @@ void dc_start_game(const char *path)
         }
         else
         {
-            if (DiscSwap())
-                LoadCustom();
+            std::string extension = get_file_extension(settings.imgread.ImagePath);
+            if (extension != "elf")
+            {
+                if (InitDrive())
+                    LoadCustom();
+                else
+                {
+                    // Content load failed. Boot the BIOS
+                    settings.imgread.ImagePath[0] = '\0';
+                    forced_bios_file = true;
+                    if (!LoadRomFiles(data_path))
+                        throw ReicastException("No BIOS file found");
+                    InitDrive();
+                }
+            }
         }
         FixUpFlash();
     }
     else if (settings.platform.system == DC_PLATFORM_NAOMI || settings.platform.system == DC_PLATFORM_ATOMISWAVE)
     {
         naomi_cart_LoadRom(path);
+        if (loading_canceled)
+            return;
         LoadCustom();
         if (settings.platform.system == DC_PLATFORM_NAOMI)
+        {
             mcfg_CreateNAOMIJamma();
+            SetNaomiNetworkConfig(-1);
+        }
         else if (settings.platform.system == DC_PLATFORM_ATOMISWAVE)
             mcfg_CreateAtomisWaveControllers();
     }
@@ -594,8 +642,6 @@ void dc_start_game(const char *path)
         }
     }
     fast_forward_mode = false;
-    game_started = true;
-    dc_resume();
 }
 
 bool dc_is_running()
@@ -642,6 +688,7 @@ void* dc_run(void*)
 
 void dc_term()
 {
+    dc_cancel_load();
     sh4_cpu.Term();
     if (settings.platform.system != DC_PLATFORM_DREAMCAST)
         naomi_cart_Close();
@@ -679,7 +726,7 @@ void InitSettings()
     settings.dynarec.Enable            = true;
     settings.dynarec.idleskip        = true;
     settings.dynarec.unstable_opt    = false;
-    settings.dynarec.safemode        = true;
+    settings.dynarec.safemode        = false;
     settings.dynarec.disable_vmem32    = false;
     settings.dreamcast.cable        = 3;    // TV composite
     settings.dreamcast.region        = 3;    // default
@@ -689,7 +736,7 @@ void InitSettings()
     settings.dreamcast.ForceWindowsCE = false;
     settings.dreamcast.HideLegacyNaomiRoms = true;
     settings.aica.DSPEnabled        = false;
-    settings.aica.LimitFPS            = LimitFPSEnabled;
+    settings.aica.LimitFPS            = true;
     settings.aica.NoBatch            = false;
     settings.aica.NoSound            = false;
     settings.audio.backend             = "auto";
@@ -722,14 +769,14 @@ void InitSettings()
     settings.pvr.SynchronousRender    = true;
 
     settings.debug.SerialConsole    = false;
+    settings.debug.SerialPTY        = false;
 
     settings.bios.UseReios            = false;
-    settings.reios.ElfFile            = "";
 
     settings.validate.OpenGlChecks  = false;
 
     settings.input.MouseSensitivity = 100;
-    settings.input.JammaSetup = 0;
+    settings.input.JammaSetup = JVS::Default;
     settings.input.VirtualGamepadVibration = 20;
     for (int i = 0; i < MAPLE_PORTS; i++)
     {
@@ -737,17 +784,21 @@ void InitSettings()
         settings.input.maple_expansion_devices[i][0] = i == 0 ? MDT_SegaVMU : MDT_None;
         settings.input.maple_expansion_devices[i][1] = i == 0 ? MDT_SegaVMU : MDT_None;
     }
+    settings.network.Enable = false;
+    settings.network.ActAsServer = false;
+    settings.network.dns = "46.101.91.123";        // Dreamcast Live DNS
+    settings.network.server = "";
 
 #if SUPPORT_DISPMANX
-    settings.dispmanx.Width        = 640;
-    settings.dispmanx.Height    = 480;
+    settings.dispmanx.Width        = 0;
+    settings.dispmanx.Height    = 0;
     settings.dispmanx.Keep_Aspect = true;
 #endif
 
-#if (HOST_OS != OS_LINUX || defined(__ANDROID__) || defined(TARGET_PANDORA))
-    settings.aica.BufferSize = 2048;
+#if HOST_CPU == CPU_ARM
+    settings.aica.BufferSize = 5644;    // 128 ms
 #else
-    settings.aica.BufferSize = 1024;
+    settings.aica.BufferSize = 2822;    // 64 ms
 #endif
 
 #if USE_OMX
@@ -776,9 +827,12 @@ void LoadSettings(bool game_specific)
     settings.dreamcast.ForceWindowsCE = cfgLoadBool(config_section, "Dreamcast.ForceWindowsCE", settings.dreamcast.ForceWindowsCE);
     if (settings.dreamcast.ForceWindowsCE)
         settings.aica.NoBatch = true;
-    settings.aica.LimitFPS            = (LimitFPSEnum)cfgLoadInt(config_section, "aica.LimitFPS", (int)settings.aica.LimitFPS);
+    settings.aica.LimitFPS            = cfgLoadBool(config_section, "aica.LimitFPS", settings.aica.LimitFPS)
+            || cfgLoadInt(config_section, "aica.LimitFPS", 0) == 2;
     settings.aica.DSPEnabled        = cfgLoadBool(config_section, "aica.DSPEnabled", settings.aica.DSPEnabled);
     settings.aica.NoSound            = cfgLoadBool(config_section, "aica.NoSound", settings.aica.NoSound);
+    settings.aica.BufferSize        = cfgLoadInt(config_section, "aica.BufferSize", settings.aica.BufferSize);
+    settings.aica.BufferSize = std::max(512u, settings.aica.BufferSize);
     settings.audio.backend            = cfgLoadStr(audio_section, "backend", settings.audio.backend.c_str());
     settings.rend.UseMipmaps        = cfgLoadBool(config_section, "rend.UseMipmaps", settings.rend.UseMipmaps);
     settings.rend.WideScreen        = cfgLoadBool(config_section, "rend.WideScreen", settings.rend.WideScreen);
@@ -800,7 +854,7 @@ void LoadSettings(bool game_specific)
     settings.rend.CustomTextures    = cfgLoadBool(config_section, "rend.CustomTextures", settings.rend.CustomTextures);
     settings.rend.DumpTextures      = cfgLoadBool(config_section, "rend.DumpTextures", settings.rend.DumpTextures);
     settings.rend.ScreenScaling     = cfgLoadInt(config_section, "rend.ScreenScaling", settings.rend.ScreenScaling);
-    settings.rend.ScreenScaling = min(max(1, settings.rend.ScreenScaling), 100);
+    settings.rend.ScreenScaling = std::min(std::max(1, settings.rend.ScreenScaling), 800);
     settings.rend.ScreenStretching  = cfgLoadInt(config_section, "rend.ScreenStretching", settings.rend.ScreenStretching);
     settings.rend.Fog                = cfgLoadBool(config_section, "rend.Fog", settings.rend.Fog);
     settings.rend.FloatVMUs            = cfgLoadBool(config_section, "rend.FloatVMUs", settings.rend.FloatVMUs);
@@ -818,32 +872,34 @@ void LoadSettings(bool game_specific)
     settings.pvr.SynchronousRender    = cfgLoadBool(config_section, "pvr.SynchronousRendering", settings.pvr.SynchronousRender);
 
     settings.debug.SerialConsole    = cfgLoadBool(config_section, "Debug.SerialConsoleEnabled", settings.debug.SerialConsole);
+    settings.debug.SerialPTY        = cfgLoadBool(config_section, "Debug.SerialPTY", settings.debug.SerialPTY);
 
     settings.bios.UseReios            = cfgLoadBool(config_section, "bios.UseReios", settings.bios.UseReios);
-    settings.reios.ElfFile            = cfgLoadStr(game_specific ? cfgGetGameId() : "reios", "ElfFile", settings.reios.ElfFile.c_str());
 
     settings.validate.OpenGlChecks  = cfgLoadBool(game_specific ? cfgGetGameId() : "validate", "OpenGlChecks", settings.validate.OpenGlChecks);
 
     settings.input.MouseSensitivity = cfgLoadInt(input_section, "MouseSensitivity", settings.input.MouseSensitivity);
-    settings.input.JammaSetup = cfgLoadInt(input_section, "JammaSetup", settings.input.JammaSetup);
+    settings.input.JammaSetup = (JVS)cfgLoadInt(input_section, "JammaSetup", (int)settings.input.JammaSetup);
     settings.input.VirtualGamepadVibration = cfgLoadInt(input_section, "VirtualGamepadVibration", settings.input.VirtualGamepadVibration);
     for (int i = 0; i < MAPLE_PORTS; i++)
     {
-        settings.input.maple_devices[i] = i == 0 ? MDT_SegaController : MDT_None;
-        settings.input.maple_expansion_devices[i][0] = i == 0 ? MDT_SegaVMU : MDT_None;
-        settings.input.maple_expansion_devices[i][1] = i == 0 ? MDT_SegaVMU : MDT_None;
+        char device_name[32];
+        sprintf(device_name, "device%d", i + 1);
+        settings.input.maple_devices[i] = (MapleDeviceType)cfgLoadInt(input_section, device_name, settings.input.maple_devices[i]);
+        sprintf(device_name, "device%d.1", i + 1);
+        settings.input.maple_expansion_devices[i][0] = (MapleDeviceType)cfgLoadInt(input_section, device_name, settings.input.maple_expansion_devices[i][0]);
+        sprintf(device_name, "device%d.2", i + 1);
+        settings.input.maple_expansion_devices[i][1] = (MapleDeviceType)cfgLoadInt(input_section, device_name, settings.input.maple_expansion_devices[i][1]);
     }
+    settings.network.Enable = cfgLoadBool("network", "Enable", settings.network.Enable);
+    settings.network.ActAsServer = cfgLoadBool("network", "ActAsServer", settings.network.ActAsServer);
+    settings.network.dns = cfgLoadStr("network", "DNS", settings.network.dns.c_str());
+    settings.network.server = cfgLoadStr("network", "server", settings.network.server.c_str());
 
 #if SUPPORT_DISPMANX
     settings.dispmanx.Width        = cfgLoadInt(game_specific ? cfgGetGameId() : "dispmanx", "width", settings.dispmanx.Width);
     settings.dispmanx.Height    = cfgLoadInt(game_specific ? cfgGetGameId() : "dispmanx", "height", settings.dispmanx.Height);
     settings.dispmanx.Keep_Aspect    = cfgLoadBool(game_specific ? cfgGetGameId() : "dispmanx", "maintain_aspect", settings.dispmanx.Keep_Aspect);
-#endif
-
-#if (HOST_OS != OS_LINUX || defined(__ANDROID__) || defined(TARGET_PANDORA))
-    settings.aica.BufferSize=2048;
-#else
-    settings.aica.BufferSize=1024;
 #endif
 
 #if USE_OMX
@@ -871,13 +927,13 @@ void LoadSettings(bool game_specific)
     }
 /*
     //make sure values are valid
-    settings.dreamcast.cable        = min(max(settings.dreamcast.cable,    0),3);
-    settings.dreamcast.region        = min(max(settings.dreamcast.region,   0),3);
-    settings.dreamcast.broadcast    = min(max(settings.dreamcast.broadcast,0),4);
+    settings.dreamcast.cable        = std::min(std::max(settings.dreamcast.cable,    0),3);
+    settings.dreamcast.region        = std::min(std::max(settings.dreamcast.region,   0),3);
+    settings.dreamcast.broadcast    = std::min(std::max(settings.dreamcast.broadcast,0),4);
 */
 }
 
-void LoadCustom()
+static void LoadCustom()
 {
     char *reios_id;
     if (settings.platform.system == DC_PLATFORM_DREAMCAST)
@@ -897,7 +953,6 @@ void LoadCustom()
     else if (settings.platform.system == DC_PLATFORM_NAOMI || settings.platform.system == DC_PLATFORM_ATOMISWAVE)
     {
         reios_id = naomi_game_id;
-        char *reios_software_name = naomi_game_id;
     }
 
     // Default per-game settings
@@ -928,9 +983,10 @@ void SaveSettings()
 //    if (!disable_vmem32_game || !settings.dynarec.disable_vmem32)
 //        cfgSaveBool("config", "Dynarec.DisableVmem32", settings.dynarec.disable_vmem32);
     cfgSaveInt("config", "Dreamcast.Language", settings.dreamcast.language);
-    cfgSaveInt("config", "aica.LimitFPS", (int)settings.aica.LimitFPS);
+    cfgSaveBool("config", "aica.LimitFPS", settings.aica.LimitFPS);
     cfgSaveBool("config", "aica.DSPEnabled", settings.aica.DSPEnabled);
     cfgSaveBool("config", "aica.NoSound", settings.aica.NoSound);
+    cfgSaveInt("config", "aica.BufferSize", settings.aica.BufferSize);
     cfgSaveStr("audio", "backend", settings.audio.backend.c_str());
 
     // Write backend specific settings
@@ -961,7 +1017,8 @@ void SaveSettings()
         cfgSaveInt("config", "rend.ScreenStretching", settings.rend.ScreenStretching);
     cfgSaveBool("config", "rend.Fog", settings.rend.Fog);
     cfgSaveBool("config", "rend.FloatVMUs", settings.rend.FloatVMUs);
-    cfgSaveBool("config", "rend.Rotate90", settings.rend.Rotate90);
+    if (!naomi_rotate_screen || !settings.rend.Rotate90)
+        cfgSaveBool("config", "rend.Rotate90", settings.rend.Rotate90);
     cfgSaveInt("config", "ta.skip", settings.pvr.ta_skip);
     cfgSaveInt("config", "pvr.rend", settings.pvr.rend);
     cfgSaveBool("config", "rend.PerStripSorting", settings.rend.PerStripSorting);
@@ -972,6 +1029,7 @@ void SaveSettings()
     cfgSaveBool("config", "pvr.SynchronousRendering", settings.pvr.SynchronousRender);
 
     cfgSaveBool("config", "Debug.SerialConsoleEnabled", settings.debug.SerialConsole);
+    cfgSaveBool("config", "Debug.SerialPTY", settings.debug.SerialPTY);
     cfgSaveInt("input", "MouseSensitivity", settings.input.MouseSensitivity);
     cfgSaveInt("input", "VirtualGamepadVibration", settings.input.VirtualGamepadVibration);
     for (int i = 0; i < MAPLE_PORTS; i++)
@@ -994,6 +1052,10 @@ void SaveSettings()
     }
     cfgSaveStr("config", "Dreamcast.ContentPath", paths.c_str());
     cfgSaveBool("config", "Dreamcast.HideLegacyNaomiRoms", settings.dreamcast.HideLegacyNaomiRoms);
+    cfgSaveBool("network", "Enable", settings.network.Enable);
+    cfgSaveBool("network", "ActAsServer", settings.network.ActAsServer);
+    cfgSaveStr("network", "DNS", settings.network.dns.c_str());
+    cfgSaveStr("network", "server", settings.network.server.c_str());
 
     GamepadDevice::SaveMaplePorts();
 
@@ -1007,18 +1069,19 @@ void SaveSettings()
 
 void dc_resume()
 {
-    emu_thread.Start();
+    SetMemoryHandlers();
+    game_started = true;
+    if (!emu_thread.thread.joinable())
+        emu_thread.Start();
 }
 
 static void cleanup_serialize(void *data)
 {
     if ( data != NULL )
         free(data) ;
-
-    dc_resume();
 }
 
-static string get_savestate_file_path()
+static std::string get_savestate_file_path()
 {
     //OpenEmu:
     return OEStateFilePath;
@@ -1026,7 +1089,7 @@ static string get_savestate_file_path()
 
 void dc_savestate()
 {
-    string filename;
+    std::string filename;
     unsigned int total_size = 0 ;
     void *data = NULL ;
     void *data_ptr = NULL ;
@@ -1082,7 +1145,7 @@ void dc_savestate()
 
 void dc_loadstate()
 {
-    string filename;
+    std::string filename;
     unsigned int total_size = 0 ;
     void *data = NULL ;
     void *data_ptr = NULL ;
@@ -1124,6 +1187,7 @@ void dc_loadstate()
 
     data_ptr = data ;
 
+    custom_texture.Terminate();
 #if FEAT_AREC == DYNAREC_JIT
     FlushCache();
 #endif
@@ -1151,4 +1215,37 @@ void dc_loadstate()
 
     cleanup_serialize(data) ;
     INFO_LOG(SAVESTATE, "Loaded state from %s size %d", filename.c_str(), total_size) ;
+}
+
+void dc_load_game(const char *path)
+{
+    loading_canceled = false;
+
+    loading_done = std::async(std::launch::async, [path] {
+        dc_start_game(path);
+    });
+}
+
+bool dc_is_load_done()
+{
+    if (!loading_done.valid())
+        return true;
+    if (loading_done.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready)
+        return true;
+    return false;
+}
+
+void dc_cancel_load()
+{
+    if (loading_done.valid())
+    {
+        loading_canceled = true;
+        loading_done.get();
+    }
+    settings.imgread.ImagePath[0] = '\0';
+}
+
+void dc_get_load_status()
+{
+    loading_done.get();
 }
