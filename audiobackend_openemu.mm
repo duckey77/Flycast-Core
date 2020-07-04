@@ -3,68 +3,54 @@
 #include <mach/mach_time.h>
 #import <OpenEmuBase/OERingBuffer.h>
 #import <chrono>
+#include <thread>
+
+using the_clock = std::chrono::high_resolution_clock;
+static the_clock::time_point last_time, NOW;
 
 #define SAMPLERATE  44100
 
-uint waitime, lastwaitime;
-
-mach_timebase_info_data_t info;
-uint64_t epochStart;
-uint64_t epochDuration;
-
-double durationMultiplier;
-
 static void openemu_init()
 {
-    mach_timebase_info(&info);
-    epochStart = mach_absolute_time();
-    lastwaitime = 0;
-    durationMultiplier =  (info.numer/ info.denom) / 1000.0 ;  //Converts mach time to microseconds
+    last_time = the_clock::time_point();
 }
 
-static u32 openemu_push(void* frame, u32 samples, bool wait)
+static u32 openemu_push(const void* frame, u32 samples, bool wait)
 {
     //Flycast is using the sound buffer as timing.  OpenEmu sound uses multiple
     //  buffers so we have no way to wait that I've found
     //We need to wait for sound to play before returning to the emulator core
     //  we calculate the time that is needed in microseconds to play the current sound
     //  and subtract the time it took since the last sound samples were played
-    
-    //Calcutale Changes in frame-sound timing.  In case frame interval or samples count changed
-    int  SamplesPerFrame = SAMPLERATE / [_current frameInterval] ;
-    double PercentOfFrameWithSound = 1.0 * samples / SamplesPerFrame;
-    double SingleFrameTime = 1.0 / [_current frameInterval] * 1000000;
-
-    //Calculate the maximum amount of time in microseconds it takes to play the samples sent
-    uint64_t MaxFrameTime = SingleFrameTime * PercentOfFrameWithSound ;
-
-    // Store the absolute current machine time for the timming calculations
-    uint64_t  NOW = mach_absolute_time();
-    
-    //Figure out the time since the last partial frame of sound played
-    epochDuration =  NOW - epochStart;
-
-    //start the next epoch
-    epochStart = NOW;
 
     //Write the sound bytes to the buffer
     [[_current audioBufferAtIndex:0] write:frame maxLength:(size_t)samples * 4];
-    
-    /* Convert to microeconds */
-    epochDuration *= durationMultiplier;
-    epochDuration -= lastwaitime;
+    NOW = the_clock::now();
 
-    //If duration was less than max time for sound play, subtract the duration from the max time, and wait the remainder
-    //   else no wait is neccessary
-    if (epochDuration < MaxFrameTime)
-        waitime = (uint)(MaxFrameTime - epochDuration);
-    else
-        waitime = 0;
+    if (wait) {
+        //Calculate the time in nano seconds it should take to play the audio
+        auto fduration = std::chrono::nanoseconds(1000000000L * samples / SAMPLERATE);
 
-    //Sleep the thread to keep timing close to being where it should be
-    usleep(waitime);
-    lastwaitime = waitime;
-   // printf ("Sound Push Bytes: %i Wait: %11d", samples, waitime);
+        //make sure time has actually elapsed before waiting
+        if (last_time.time_since_epoch() != the_clock::duration::zero())
+        {
+          //Calculate the duration differnece between the time elapsed and how long it should have taken to play the sound
+
+          auto duration = fduration - (the_clock::now() - last_time);
+            if (duration >= the_clock::duration::zero()){
+                 //Sleep the thread to make up that difference
+                std::this_thread::sleep_for(duration);
+                last_time += fduration;
+            }else{
+                last_time = NOW;
+            }
+        }
+        else
+        {
+            //Set the last_time marker to now
+            last_time = NOW;
+        }
+    }
 
 	return 1;
 }
