@@ -349,8 +349,6 @@ void calcFPS(){
 {
     @autoreleasepool
     {
-        [self beginPausedExecution];
-        
         //Wait here until we get the signal for full initialization
         while (!system_init)
             usleep (10000);
@@ -358,21 +356,18 @@ void calcFPS(){
         dc_SetStateName(autoLoadStatefileName.fileSystemRepresentation);
         dc_loadstate();
         
-        [self endPausedExecution];
-        
+        dc_resume();
     }
 }
 
 - (void)saveStateToFileAtPath:(NSString *)fileName completionHandler:(void (^)(BOOL, NSError *))block
 {
     if (has_init) {
-        [self beginPausedExecution];
-        
         dc_SetStateName(fileName.fileSystemRepresentation);
         dc_savestate();
         
         dc_resume();
-        [self endPausedExecution];
+
         block(true, nil);
     }
 }
@@ -382,18 +377,12 @@ void calcFPS(){
     if (!has_init) {
         //Start a separate thread to load
         autoLoadStatefileName = fileName;
-        
         [NSThread detachNewThreadSelector:@selector(autoloadWaitThread) toTarget:self withObject:nil];
-        
     } else {
-        [self beginPausedExecution];
-        
         dc_SetStateName(fileName.fileSystemRepresentation);
         dc_loadstate();
         dc_resume();
-        [self endPausedExecution];
     }
-    
     block(true, nil);
 }
 
