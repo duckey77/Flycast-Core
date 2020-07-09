@@ -23,10 +23,12 @@ static u32 openemu_push(const void* frame, u32 samples, bool wait)
     //  we calculate the time that is needed in microseconds to play the current sound
     //  and subtract the time it took since the last sound samples were played
 
+    //Get the Current clock time
+    NOW = the_clock::now();
+    
     //Write the sound bytes to the buffer
     [[_current audioBufferAtIndex:0] write:frame maxLength:(size_t)samples * 4];
-    NOW = the_clock::now();
-
+    
     if (wait) {
         //Calculate the time in nano seconds it should take to play the audio
         auto fduration = std::chrono::nanoseconds(1000000000L * samples / SAMPLERATE);
@@ -35,10 +37,9 @@ static u32 openemu_push(const void* frame, u32 samples, bool wait)
         if (last_time.time_since_epoch() != the_clock::duration::zero())
         {
           //Calculate the duration differnece between the time elapsed and how long it should have taken to play the sound
-
-          auto duration = fduration - (the_clock::now() - last_time);
+          auto duration = fduration - (NOW - last_time);
             if (duration >= the_clock::duration::zero()){
-                 //Sleep the thread to make up that difference
+                //Sleep the thread to make up that difference
                 std::this_thread::sleep_for(duration);
                 last_time += fduration;
             }else{
@@ -51,7 +52,6 @@ static u32 openemu_push(const void* frame, u32 samples, bool wait)
             last_time = NOW;
         }
     }
-
 	return 1;
 }
 
